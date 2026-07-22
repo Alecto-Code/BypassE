@@ -217,7 +217,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY (V11 - FILTER BENIH/SEED) // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY + TOTAL VALUE HEADER // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -238,12 +238,11 @@ local function getCropNameForSlot(weightLabel)
                     local textClean = string.match(child.Text, "^%s*(.-)%s*$") or child.Text
                     local textLower = string.lower(textClean)
                     
-                    -- ABAIKAN KATA "SEED" ATAU "BENIH"
+                    -- ABAIKAN KATA SEED / BENIH
                     if string.find(textLower, "seed") or string.find(textLower, "benih") then
                         return nil
                     end
                     
-                    -- Cek EXACT MATCH dengan nama buah
                     for knownCrop, _ in pairs(CROP_DATA) do
                         if textLower == string.lower(knownCrop) then
                             return knownCrop
@@ -261,7 +260,7 @@ local function getInventoryContainer()
     if not playerGui then return nil end
 
     for _, guiObj in ipairs(playerGui:GetDescendants()) do
-        if guiObj:IsA("TextLabel") and guiObj.Text == "Inventory" then
+        if guiObj:IsA("TextLabel") and (guiObj.Text == "Inventory" or string.find(guiObj.Text, "Fruits")) then
             local container = guiObj.Parent
             if container and container.Name ~= "PlayerGui" then
                 return container.Parent or container
@@ -282,17 +281,17 @@ local function processInventorySlots()
         return
     end
 
-    -- SCAN TEKS "kg" DI DALAM INVENTORY
+    local grandTotalValue = 0
+
+    -- SCAN HANYA SLOT DENGAN TEKS "kg" DI DALAM INVENTORY
     for _, guiObj in ipairs(inventoryContainer:GetDescendants()) do
-        if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" then
+        if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" and guiObj.Name ~= "TotalValueBanner" then
             local textLower = string.lower(guiObj.Text)
             
-            -- Hanya proses jika mengandung teks berat "kg"
             if string.find(textLower, "kg") and string.match(textLower, "[%d%.]+") then
                 local weightLabel = guiObj
                 local weightText = weightLabel.Text
                 
-                -- Cari nama crop HANYA jika bukan SEED
                 local cropName = getCropNameForSlot(weightLabel)
                 
                 if cropName then
@@ -301,6 +300,8 @@ local function processInventorySlots()
                     
                     if baseSell and weight then
                         local totalPrice = weight * baseSell
+                        grandTotalValue = grandTotalValue + totalPrice -- Tambahkan ke Total Keseluruhan
+                        
                         local priceString = formatPrice(totalPrice)
                         
                         local priceTag = weightLabel:FindFirstChild("PriceTagOverlay")
@@ -329,15 +330,44 @@ local function processInventorySlots()
             end
         end
     end
+
+    -- // DIPASANG BANNER TOTAL HARGA BUAH DI ATAS INVENTORY // --
+    local totalBanner = inventoryContainer:FindFirstChild("TotalValueBanner")
+    if not totalBanner then
+        totalBanner = Instance.new("TextLabel")
+        totalBanner.Name = "TotalValueBanner"
+        totalBanner.Size = UDim2.new(0, 240, 0, 26)
+        totalBanner.Position = UDim2.new(0.5, 0, 0, -30) -- Posisi di atas frame Inventory
+        totalBanner.AnchorPoint = Vector2.new(0.5, 0)
+        totalBanner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        totalBanner.BackgroundTransparency = 0.15
+        totalBanner.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
+        totalBanner.Font = Enum.Font.SourceSansBold
+        totalBanner.TextSize = 13
+        totalBanner.ZIndex = 500
+        totalBanner.Parent = inventoryContainer
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = totalBanner
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(255, 215, 0)
+        stroke.Thickness = 1
+        stroke.Parent = totalBanner
+    end
+    
+    totalBanner.Text = "TOTAL CROPS VALUE: ≈ " .. formatPrice(grandTotalValue)
+    totalBanner.Visible = true
 end
 
 local function hideAllPriceOverlays()
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return end
 
-    for _, priceTag in ipairs(playerGui:GetDescendants()) do
-        if priceTag.Name == "PriceTagOverlay" then
-            priceTag.Visible = false
+    for _, tag in ipairs(playerGui:GetDescendants()) do
+        if tag.Name == "PriceTagOverlay" or tag.Name == "TotalValueBanner" then
+            tag.Visible = false
         end
     end
 end
@@ -541,4 +571,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V11 (Seed Filter Included): Loaded Successfully.")
+print("Premium Suite Final V12 (Total Crops Value Banner Included): Loaded Successfully.")
