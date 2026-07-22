@@ -30,22 +30,22 @@ local originalPlantData = {}
 local originalTextures = {}
 local originalLightingEffects = {}
 
--- // DATABASE TANAMAN & HARGA // --
+-- // DATABASE TANAMAN (DENGAN BASE SELL SAJA) // --
 local CROP_DATA = {
-    ["Rocket Pop"]      = { BaseSell = 22500, BaseWeight = 0.8 },
-    ["Mushroom"]        = { BaseSell = 13000, BaseWeight = 5.0 },
-    ["Hypno Bloom"]     = { BaseSell = 9500,  BaseWeight = 9.0 },
-    ["Moon Bloom"]      = { BaseSell = 9000,  BaseWeight = 9.0 },
-    ["Venom Spitter"]   = { BaseSell = 3800,  BaseWeight = 9.0 },
-    ["Dragon's Breath"] = { BaseSell = 3400,  BaseWeight = 7.5 },
-    ["Venus Fly Trap"]  = { BaseSell = 3000,  BaseWeight = 3.0 },
-    ["Ghost Pepper"]    = { BaseSell = 2500,  BaseWeight = 7.5 },
-    ["Sunflower"]       = { BaseSell = 1750,  BaseWeight = 6.0 },
-    ["Poison Ivy"]      = { BaseSell = 1700,  BaseWeight = 2.1 },
-    ["Pomegranate"]     = { BaseSell = 900,   BaseWeight = 1.5 },
-    ["Poison Apple"]    = { BaseSell = 900,   BaseWeight = 2.25 },
-    ["Fire Fern"]       = { BaseSell = 900,   BaseWeight = 9.0 },
-    ["Bamboo"]          = { BaseSell = 800,   BaseWeight = 4.0 },
+    ["Rocket Pop"]      = 22500,
+    ["Mushroom"]        = 13000,
+    ["Hypno Bloom"]     = 9500,
+    ["Moon Bloom"]      = 9000,
+    ["Venom Spitter"]   = 3800,
+    ["Dragon's Breath"] = 3400,
+    ["Venus Fly Trap"]  = 3000,
+    ["Ghost Pepper"]    = 2500,
+    ["Sunflower"]       = 1750,
+    ["Poison Ivy"]      = 1700,
+    ["Pomegranate"]     = 900,
+    ["Poison Apple"]    = 900,
+    ["Fire Fern"]       = 900,
+    ["Bamboo"]          = 800,
 }
 
 -- // 1. LOGIKA INSTANT INTERACT // --
@@ -217,9 +217,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY (EKSPONENSIAL FORMULA V8) // --
-local WEIGHT_EXPONENT = 1.633 -- Rumus Eksponensial Game
-
+-- // 6. LOGIKA FRUIT PRICE OVERLAY (HANYA INVENTORY + RUMUS SIMPEL) // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -230,45 +228,57 @@ local function formatPrice(amount)
     end
 end
 
-local function getEstimatedPrice(cropName, weightText)
-    local data = CROP_DATA[cropName]
-    if not data then return nil end
+-- MENCARI MAIN CONTAINER INVENTORY UI
+local function getInventoryContainer()
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
 
-    local weight = tonumber(string.match(weightText, "[%d%.]+"))
-    if not weight then return nil end
-
-    -- Hitung menggunakan Rumus Eksponensial
-    local weightRatio = weight / data.BaseWeight
-    local totalPrice = data.BaseSell * (weightRatio ^ WEIGHT_EXPONENT)
-
-    return formatPrice(totalPrice)
+    -- Cari teks judul "Inventory"
+    for _, guiObj in ipairs(playerGui:GetDescendants()) do
+        if guiObj:IsA("TextLabel") and guiObj.Text == "Inventory" then
+            local container = guiObj.Parent
+            if container and container.Name ~= "PlayerGui" then
+                return container.Parent or container
+            end
+        end
+    end
+    
+    return playerGui:FindFirstChild("Inventory", true)
 end
 
-local function findCropNameInAncestors(weightLabel)
+local function findCropNameInAncestors(weightLabel, topBoundary)
     local currentLevel = weightLabel.Parent
-    for level = 1, 4 do
-        if not currentLevel or not currentLevel:IsA("GuiObject") then break end
+    while currentLevel and currentLevel ~= topBoundary do
+        if not currentLevel:IsA("GuiObject") then break end
         
         for _, descendant in ipairs(currentLevel:GetDescendants()) do
             if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
                 local text = descendant.Text
                 for knownCrop, _ in pairs(CROP_DATA) do
                     if string.find(string.lower(text), string.lower(knownCrop)) then
-                        return knownCrop, currentLevel
+                        return knownCrop
                     end
                 end
             end
         end
         currentLevel = currentLevel.Parent
     end
-    return nil, nil
+    return nil
 end
 
 local function processInventorySlots()
-    local playerGui = localPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return end
+    if not fruitPriceEnabled then return end
 
-    for _, guiObj in ipairs(playerGui:GetDescendants()) do
+    local inventoryContainer = getInventoryContainer()
+    if not inventoryContainer then return end
+
+    -- Pastikan UI inventory sedang terbuka
+    if inventoryContainer:IsA("GuiObject") and not inventoryContainer.Visible then
+        return
+    end
+
+    -- HANYA SCAN DI DALAM UI INVENTORY
+    for _, guiObj in ipairs(inventoryContainer:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" then
             local textLower = string.lower(guiObj.Text)
             
@@ -276,12 +286,17 @@ local function processInventorySlots()
                 local weightLabel = guiObj
                 local weightText = weightLabel.Text
                 
-                local cropName, slotContainer = findCropNameInAncestors(weightLabel)
+                local cropName = findCropNameInAncestors(weightLabel, inventoryContainer)
                 
                 if cropName then
-                    local priceString = getEstimatedPrice(cropName, weightText)
+                    local baseSell = CROP_DATA[cropName]
+                    local weight = tonumber(string.match(weightText, "[%d%.]+"))
                     
-                    if priceString and fruitPriceEnabled then
+                    if baseSell and weight then
+                        -- Rumus Simpel: Berat x BaseSell
+                        local totalPrice = weight * baseSell
+                        local priceString = formatPrice(totalPrice)
+                        
                         local priceTag = weightLabel:FindFirstChild("PriceTagOverlay")
                         if not priceTag then
                             priceTag = Instance.new("TextLabel")
@@ -520,4 +535,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V8 (Exponential Formula Accurate): Loaded Successfully.")
+print("Premium Suite Final V9 (Inventory Only + Simple Multiplier): Loaded Successfully.")
