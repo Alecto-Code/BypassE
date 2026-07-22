@@ -25,7 +25,7 @@ local antiLagPlantsEnabled = false
 local texturesCleared = false
 local fruitPriceEnabled = false
 
--- // Tabel Penyimpanan Data Asli (Memory Storage) // --
+-- // Tabel Penyimpanan Data Asli // --
 local originalPlantData = {}
 local originalTextures = {}
 local originalLightingEffects = {}
@@ -146,10 +146,7 @@ end
 
 local function processAllPlants()
     local Gardens = game.Workspace:FindFirstChild("Gardens")
-    if not Gardens then 
-        warn("Folder 'Gardens' tidak ditemukan di Workspace!")
-        return 
-    end
+    if not Gardens then return end
 
     if antiLagPlantsEnabled then
         for _, plot in ipairs(Gardens:GetChildren()) do
@@ -220,7 +217,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY (ALGORITMA V7 SANAT AKURAT) // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -244,52 +241,64 @@ local function getEstimatedPrice(cropName, weightText)
     return formatPrice(totalPrice)
 end
 
+-- MENCARI CONTAINER ASLI SLOT DENGAN MEMANJAT PARENT (UP TO 4 LEVELS)
+local function findCropNameInAncestors(weightLabel)
+    local currentLevel = weightLabel.Parent
+    for level = 1, 4 do
+        if not currentLevel or not currentLevel:IsA("GuiObject") then break end
+        
+        -- Cari di seluruh keturunan level ini
+        for _, descendant in ipairs(currentLevel:GetDescendants()) do
+            if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
+                local text = descendant.Text
+                for knownCrop, _ in pairs(CROP_DATA) do
+                    if string.find(string.lower(text), string.lower(knownCrop)) then
+                        return knownCrop, currentLevel
+                    end
+                end
+            end
+        end
+        currentLevel = currentLevel.Parent
+    end
+    return nil, nil
+end
+
 local function processInventorySlots()
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return end
 
+    -- Iterasi semua TextLabel di PlayerGui
     for _, guiObj in ipairs(playerGui:GetDescendants()) do
-        if guiObj:IsA("TextLabel") and string.find(string.lower(guiObj.Text), "kg") then
-            local weightLabel = guiObj
-            local weightText = weightLabel.Text
+        if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" then
+            local textLower = string.lower(guiObj.Text)
             
-            local slot = weightLabel.Parent
-            if slot and not slot:IsA("GuiObject") then
-                slot = slot.Parent
-            end
-            
-            if slot and slot:IsA("GuiObject") then
-                local cropName = nil
-                for _, descendant in ipairs(slot:GetDescendants()) do
-                    if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
-                        local text = descendant.Text
-                        for knownCrop, _ in pairs(CROP_DATA) do
-                            if string.find(string.lower(text), string.lower(knownCrop)) then
-                                cropName = knownCrop
-                                break
-                            end
-                        end
-                    end
-                    if cropName then break end
-                end
-
+            -- Cek apakah TextLabel ini berisi angka berat (contoh: "65.79kg")
+            if string.find(textLower, "kg") and string.match(textLower, "[%d%.]+") then
+                local weightLabel = guiObj
+                local weightText = weightLabel.Text
+                
+                -- Cari Nama Tanaman dengan memanjat parent hierarchy
+                local cropName, slotContainer = findCropNameInAncestors(weightLabel)
+                
                 if cropName then
                     local priceString = getEstimatedPrice(cropName, weightText)
                     
                     if priceString and fruitPriceEnabled then
-                        local priceTag = slot:FindFirstChild("PriceTagOverlay")
+                        -- LEKATKAN LABEL HARGA LANGSUNG MENEMPEL PADA WEIGHTLABEL
+                        local priceTag = weightLabel:FindFirstChild("PriceTagOverlay")
                         if not priceTag then
                             priceTag = Instance.new("TextLabel")
                             priceTag.Name = "PriceTagOverlay"
-                            priceTag.Size = UDim2.new(1, 0, 0, 16)
-                            priceTag.Position = UDim2.new(0, 0, 0, 0)
+                            priceTag.Size = UDim2.new(1, 20, 0, 14)
+                            priceTag.Position = UDim2.new(0.5, 0, 0, -14) -- Persis di atas teks berat (atau ganti ke 1, 0 untuk di bawah)
+                            priceTag.AnchorPoint = Vector2.new(0.5, 0)
                             priceTag.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                            priceTag.BackgroundTransparency = 0.3
-                            priceTag.TextColor3 = Color3.fromRGB(255, 215, 0)
+                            priceTag.BackgroundTransparency = 0.2
+                            priceTag.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
                             priceTag.Font = Enum.Font.SourceSansBold
                             priceTag.TextSize = 11
-                            priceTag.ZIndex = 100
-                            priceTag.Parent = slot
+                            priceTag.ZIndex = weightLabel.ZIndex + 50 -- Pastikan ZIndex lebih tinggi dari weightLabel
+                            priceTag.Parent = weightLabel
                             
                             local corner = Instance.new("UICorner")
                             corner.CornerRadius = UDim.new(0, 3)
@@ -514,4 +523,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V6 (Robust Overlay Scanner): Loaded Successfully.")
+print("Premium Suite Final V7 (Ancestor Crawl Overlay): Loaded Successfully.")
