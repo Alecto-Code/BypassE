@@ -48,6 +48,77 @@ local CROP_DATA = {
     ["Bamboo"]          = 800,
 }
 
+-- // DATABASE MUTASI & MULTIPLIER // --
+local MUTATION_DATA = {
+    ["Glow"]       = 100,
+    ["Eclipsed"]   = 80,
+    ["Bloodlit"]   = 70,
+    ["Ignited"]    = 60,
+    ["Starstruck"] = 50,
+    ["Aurora"]     = 40,
+    ["Rainbow"]    = 30,
+    ["Electric"]   = 25,
+    ["Frozen"]     = 20,
+    ["Gold"]       = 10,
+    ["Chained"]    = 8,
+}
+
+-- // DETEKSI MULTIPLIER BERDASARKAN WARNA TEKS (FALLBACK) // --
+local function getMutationMultiplierFromColor(color)
+    local h, s, v = color:ToHSV()
+    
+    -- Jika Saturation sangat rendah -> Putih / Normal (1x)
+    if s < 0.15 then
+        return 1.0
+    end
+    
+    -- Cyan / Biru Muda (~180 deg -> H = 0.45 - 0.55) -> Frozen (x20)
+    if h >= 0.45 and h <= 0.55 then
+        return 20.0
+    -- Ungu / Violet (~260-280 deg -> H = 0.70 - 0.80) -> Aurora (x40)
+    elseif h >= 0.70 and h <= 0.80 then
+        return 40.0
+    -- Pink / Magenta (~300-330 deg -> H = 0.82 - 0.93) -> Rainbow (x30)
+    elseif h >= 0.82 and h <= 0.93 then
+        return 30.0
+    -- Kuning / Emas (~45-60 deg -> H = 0.11 - 0.19) -> Gold (x10)
+    elseif h >= 0.11 and h <= 0.19 then
+        return 10.0
+    -- Oranye (~20-40 deg -> H = 0.05 - 0.10) -> Ignited (x60)
+    elseif h >= 0.05 and h <= 0.10 then
+        return 60.0
+    -- Merah (H < 0.04 atau H > 0.95) -> Bloodlit (x70)
+    elseif h < 0.04 or h > 0.95 then
+        return 70.0
+    end
+    
+    return 1.0
+end
+
+-- AMBIL MULTIPLIER DARI ATTRIBUTE ATAU WARNA
+local function getMutationMultiplier(slot, nameLabel)
+    if slot then
+        for attrName, attrVal in pairs(slot:GetAttributes()) do
+            if typeof(attrVal) == "string" then
+                local mult = MUTATION_DATA[attrVal]
+                if mult then return mult end
+            end
+        end
+        for _, child in ipairs(slot:GetChildren()) do
+            if child:IsA("StringValue") then
+                local mult = MUTATION_DATA[child.Value]
+                if mult then return mult end
+            end
+        end
+    end
+    
+    if nameLabel and nameLabel:IsA("TextLabel") then
+        return getMutationMultiplierFromColor(nameLabel.TextColor3)
+    end
+    
+    return 1.0
+end
+
 -- // 1. LOGIKA INSTANT INTERACT // --
 local function makeInstant(prompt)
     if prompt:IsA("ProximityPrompt") then
@@ -217,7 +288,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY + TOTAL VALUE HEADER // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY + MUTATION MULTIPLIER // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -228,7 +299,7 @@ local function formatPrice(amount)
     end
 end
 
-local function getCropNameForSlot(weightLabel)
+local function getCropDataForSlot(weightLabel)
     local checkFrames = { weightLabel.Parent, weightLabel.Parent and weightLabel.Parent.Parent }
     
     for _, frame in ipairs(checkFrames) do
@@ -238,21 +309,21 @@ local function getCropNameForSlot(weightLabel)
                     local textClean = string.match(child.Text, "^%s*(.-)%s*$") or child.Text
                     local textLower = string.lower(textClean)
                     
-                    -- ABAIKAN KATA SEED / BENIH
                     if string.find(textLower, "seed") or string.find(textLower, "benih") then
-                        return nil
+                        return nil, nil, 1.0
                     end
                     
                     for knownCrop, _ in pairs(CROP_DATA) do
                         if textLower == string.lower(knownCrop) then
-                            return knownCrop
+                            local mutationMult = getMutationMultiplier(frame, child)
+                            return knownCrop, frame, mutationMult
                         end
                     end
                 end
             end
         end
     end
-    return nil
+    return nil, nil, 1.0
 end
 
 local function getInventoryContainer()
@@ -283,7 +354,6 @@ local function processInventorySlots()
 
     local grandTotalValue = 0
 
-    -- SCAN SLOT DI DALAM INVENTORY & HOTBAR
     for _, guiObj in ipairs(inventoryContainer:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" and guiObj.Name ~= "TotalValueBanner" then
             local textLower = string.lower(guiObj.Text)
@@ -292,15 +362,16 @@ local function processInventorySlots()
                 local weightLabel = guiObj
                 local weightText = weightLabel.Text
                 
-                local cropName = getCropNameForSlot(weightLabel)
+                local cropName, slotFrame, mutationMultiplier = getCropDataForSlot(weightLabel)
                 
                 if cropName then
                     local baseSell = CROP_DATA[cropName]
                     local weight = tonumber(string.match(weightText, "[%d%.]+"))
                     
                     if baseSell and weight then
-                        local totalPrice = weight * baseSell
-                        grandTotalValue = grandTotalValue + totalPrice -- Tambahkan ke Total
+                        -- RUMUS: Berat x BaseSell x Multiplier Mutasi
+                        local totalPrice = weight * baseSell * mutationMultiplier
+                        grandTotalValue = grandTotalValue + totalPrice
                         
                         local priceString = formatPrice(totalPrice)
                         
@@ -331,20 +402,20 @@ local function processInventorySlots()
         end
     end
 
-    -- // BANNER TOTAL HARGA BUAH (DITAMPIKAN DI DALAM FRAME TOP HEADER Y = 6px) // --
+    -- BANNER TOTAL HARGA BUAH (DENGAN KALKULASI MUTASI)
     local totalBanner = inventoryContainer:FindFirstChild("TotalValueBanner")
     if not totalBanner then
         totalBanner = Instance.new("TextLabel")
         totalBanner.Name = "TotalValueBanner"
         totalBanner.Size = UDim2.new(0, 210, 0, 22)
-        totalBanner.Position = UDim2.new(0.5, 0, 0, 6) -- Di tengah atas di dalam frame Inventory
+        totalBanner.Position = UDim2.new(0.5, 0, 0, 6)
         totalBanner.AnchorPoint = Vector2.new(0.5, 0)
         totalBanner.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
         totalBanner.BackgroundTransparency = 0.2
-        totalBanner.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
+        totalBanner.TextColor3 = Color3.fromRGB(255, 215, 0)
         totalBanner.Font = Enum.Font.SourceSansBold
         totalBanner.TextSize = 12
-        totalBanner.ZIndex = 1000 -- Memastikan selalu di paling depan
+        totalBanner.ZIndex = 1000
         totalBanner.Parent = inventoryContainer
         
         local corner = Instance.new("UICorner")
@@ -571,4 +642,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V13 (Internal Header Banner): Loaded Successfully.")
+print("Premium Suite Final V14 (Full Mutation Multipliers Integrated): Loaded Successfully.")
