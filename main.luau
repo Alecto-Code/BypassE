@@ -217,7 +217,9 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY (ALGORITMA V7 SANAT AKURAT) // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY (EKSPONENSIAL FORMULA V8) // --
+local WEIGHT_EXPONENT = 1.633 -- Rumus Eksponensial Game
+
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -235,19 +237,18 @@ local function getEstimatedPrice(cropName, weightText)
     local weight = tonumber(string.match(weightText, "[%d%.]+"))
     if not weight then return nil end
 
-    local pricePerKg = data.BaseSell / data.BaseWeight
-    local totalPrice = weight * pricePerKg
+    -- Hitung menggunakan Rumus Eksponensial
+    local weightRatio = weight / data.BaseWeight
+    local totalPrice = data.BaseSell * (weightRatio ^ WEIGHT_EXPONENT)
 
     return formatPrice(totalPrice)
 end
 
--- MENCARI CONTAINER ASLI SLOT DENGAN MEMANJAT PARENT (UP TO 4 LEVELS)
 local function findCropNameInAncestors(weightLabel)
     local currentLevel = weightLabel.Parent
     for level = 1, 4 do
         if not currentLevel or not currentLevel:IsA("GuiObject") then break end
         
-        -- Cari di seluruh keturunan level ini
         for _, descendant in ipairs(currentLevel:GetDescendants()) do
             if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
                 local text = descendant.Text
@@ -267,37 +268,33 @@ local function processInventorySlots()
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return end
 
-    -- Iterasi semua TextLabel di PlayerGui
     for _, guiObj in ipairs(playerGui:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" then
             local textLower = string.lower(guiObj.Text)
             
-            -- Cek apakah TextLabel ini berisi angka berat (contoh: "65.79kg")
             if string.find(textLower, "kg") and string.match(textLower, "[%d%.]+") then
                 local weightLabel = guiObj
                 local weightText = weightLabel.Text
                 
-                -- Cari Nama Tanaman dengan memanjat parent hierarchy
                 local cropName, slotContainer = findCropNameInAncestors(weightLabel)
                 
                 if cropName then
                     local priceString = getEstimatedPrice(cropName, weightText)
                     
                     if priceString and fruitPriceEnabled then
-                        -- LEKATKAN LABEL HARGA LANGSUNG MENEMPEL PADA WEIGHTLABEL
                         local priceTag = weightLabel:FindFirstChild("PriceTagOverlay")
                         if not priceTag then
                             priceTag = Instance.new("TextLabel")
                             priceTag.Name = "PriceTagOverlay"
                             priceTag.Size = UDim2.new(1, 20, 0, 14)
-                            priceTag.Position = UDim2.new(0.5, 0, 0, -14) -- Persis di atas teks berat (atau ganti ke 1, 0 untuk di bawah)
+                            priceTag.Position = UDim2.new(0.5, 0, 0, -14)
                             priceTag.AnchorPoint = Vector2.new(0.5, 0)
                             priceTag.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
                             priceTag.BackgroundTransparency = 0.2
-                            priceTag.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
+                            priceTag.TextColor3 = Color3.fromRGB(255, 215, 0)
                             priceTag.Font = Enum.Font.SourceSansBold
                             priceTag.TextSize = 11
-                            priceTag.ZIndex = weightLabel.ZIndex + 50 -- Pastikan ZIndex lebih tinggi dari weightLabel
+                            priceTag.ZIndex = weightLabel.ZIndex + 50
                             priceTag.Parent = weightLabel
                             
                             local corner = Instance.new("UICorner")
@@ -523,4 +520,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V7 (Ancestor Crawl Overlay): Loaded Successfully.")
+print("Premium Suite Final V8 (Exponential Formula Accurate): Loaded Successfully.")
