@@ -30,7 +30,7 @@ local originalPlantData = {}
 local originalTextures = {}
 local originalLightingEffects = {}
 
--- // DATABASE TANAMAN (DENGAN BASE SELL SAJA) // --
+-- // DATABASE TANAMAN (BASE SELL ONLY) // --
 local CROP_DATA = {
     ["Rocket Pop"]      = 22500,
     ["Mushroom"]        = 13000,
@@ -217,7 +217,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY (HANYA INVENTORY + RUMUS SIMPEL) // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY (V11 - FILTER BENIH/SEED) // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -228,12 +228,38 @@ local function formatPrice(amount)
     end
 end
 
--- MENCARI MAIN CONTAINER INVENTORY UI
+local function getCropNameForSlot(weightLabel)
+    local checkFrames = { weightLabel.Parent, weightLabel.Parent and weightLabel.Parent.Parent }
+    
+    for _, frame in ipairs(checkFrames) do
+        if frame and frame:IsA("GuiObject") then
+            for _, child in ipairs(frame:GetDescendants()) do
+                if child:IsA("TextLabel") and child ~= weightLabel and child.Name ~= "PriceTagOverlay" then
+                    local textClean = string.match(child.Text, "^%s*(.-)%s*$") or child.Text
+                    local textLower = string.lower(textClean)
+                    
+                    -- ABAIKAN KATA "SEED" ATAU "BENIH"
+                    if string.find(textLower, "seed") or string.find(textLower, "benih") then
+                        return nil
+                    end
+                    
+                    -- Cek EXACT MATCH dengan nama buah
+                    for knownCrop, _ in pairs(CROP_DATA) do
+                        if textLower == string.lower(knownCrop) then
+                            return knownCrop
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function getInventoryContainer()
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return nil end
 
-    -- Cari teks judul "Inventory"
     for _, guiObj in ipairs(playerGui:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Text == "Inventory" then
             local container = guiObj.Parent
@@ -246,54 +272,34 @@ local function getInventoryContainer()
     return playerGui:FindFirstChild("Inventory", true)
 end
 
-local function findCropNameInAncestors(weightLabel, topBoundary)
-    local currentLevel = weightLabel.Parent
-    while currentLevel and currentLevel ~= topBoundary do
-        if not currentLevel:IsA("GuiObject") then break end
-        
-        for _, descendant in ipairs(currentLevel:GetDescendants()) do
-            if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
-                local text = descendant.Text
-                for knownCrop, _ in pairs(CROP_DATA) do
-                    if string.find(string.lower(text), string.lower(knownCrop)) then
-                        return knownCrop
-                    end
-                end
-            end
-        end
-        currentLevel = currentLevel.Parent
-    end
-    return nil
-end
-
 local function processInventorySlots()
     if not fruitPriceEnabled then return end
 
     local inventoryContainer = getInventoryContainer()
     if not inventoryContainer then return end
 
-    -- Pastikan UI inventory sedang terbuka
     if inventoryContainer:IsA("GuiObject") and not inventoryContainer.Visible then
         return
     end
 
-    -- HANYA SCAN DI DALAM UI INVENTORY
+    -- SCAN TEKS "kg" DI DALAM INVENTORY
     for _, guiObj in ipairs(inventoryContainer:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" then
             local textLower = string.lower(guiObj.Text)
             
+            -- Hanya proses jika mengandung teks berat "kg"
             if string.find(textLower, "kg") and string.match(textLower, "[%d%.]+") then
                 local weightLabel = guiObj
                 local weightText = weightLabel.Text
                 
-                local cropName = findCropNameInAncestors(weightLabel, inventoryContainer)
+                -- Cari nama crop HANYA jika bukan SEED
+                local cropName = getCropNameForSlot(weightLabel)
                 
                 if cropName then
                     local baseSell = CROP_DATA[cropName]
                     local weight = tonumber(string.match(weightText, "[%d%.]+"))
                     
                     if baseSell and weight then
-                        -- Rumus Simpel: Berat x BaseSell
                         local totalPrice = weight * baseSell
                         local priceString = formatPrice(totalPrice)
                         
@@ -535,4 +541,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V9 (Inventory Only + Simple Multiplier): Loaded Successfully.")
+print("Premium Suite Final V11 (Seed Filter Included): Loaded Successfully.")
