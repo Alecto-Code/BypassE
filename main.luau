@@ -23,11 +23,30 @@ local spamEnabled = false
 local autoDropEnabled = false
 local antiLagPlantsEnabled = false
 local texturesCleared = false
+local fruitPriceEnabled = false
 
 -- // Tabel Penyimpanan Data Asli (Memory Storage) // --
 local originalPlantData = {}
 local originalTextures = {}
 local originalLightingEffects = {}
+
+-- // DATABASE TANAMAN & HARGA // --
+local CROP_DATA = {
+    ["Rocket Pop"]      = { BaseSell = 22500, BaseWeight = 0.8 },
+    ["Mushroom"]        = { BaseSell = 13000, BaseWeight = 5.0 },
+    ["Hypno Bloom"]     = { BaseSell = 9500,  BaseWeight = 9.0 },
+    ["Moon Bloom"]      = { BaseSell = 9000,  BaseWeight = 9.0 },
+    ["Venom Spitter"]   = { BaseSell = 3800,  BaseWeight = 9.0 },
+    ["Dragon's Breath"] = { BaseSell = 3400,  BaseWeight = 7.5 },
+    ["Venus Fly Trap"]  = { BaseSell = 3000,  BaseWeight = 3.0 },
+    ["Ghost Pepper"]    = { BaseSell = 2500,  BaseWeight = 7.5 },
+    ["Sunflower"]       = { BaseSell = 1750,  BaseWeight = 6.0 },
+    ["Poison Ivy"]      = { BaseSell = 1700,  BaseWeight = 2.1 },
+    ["Pomegranate"]     = { BaseSell = 900,   BaseWeight = 1.5 },
+    ["Poison Apple"]    = { BaseSell = 900,   BaseWeight = 2.25 },
+    ["Fire Fern"]       = { BaseSell = 900,   BaseWeight = 9.0 },
+    ["Bamboo"]          = { BaseSell = 800,   BaseWeight = 4.0 },
+}
 
 -- // 1. LOGIKA INSTANT INTERACT // --
 local function makeInstant(prompt)
@@ -85,7 +104,7 @@ task.spawn(function()
     end
 end)
 
--- // 4. LOGIKA ANTI-LAG PLANTS (METODE 2: SIZE 0 + TRANSPARENT) // --
+-- // 4. LOGIKA ANTI-LAG PLANTS // --
 local function minimizePlantVisuals(plantModel)
     if not plantModel:IsA("Model") then return end
     
@@ -161,10 +180,9 @@ if Gardens then
     end
 end
 
--- // 5. LOGIKA CLEAR TEXTURES & LIGHTING EFFECTS (EKSTREM ANTI-LAG) // --
+-- // 5. LOGIKA CLEAR TEXTURES & LIGHTING EFFECTS // --
 local function toggleTexturesAndLighting(state)
     if state then
-        -- Bagian A: Hapus Tekstur Map
         for _, v in ipairs(game.Workspace:GetDescendants()) do
             if v:IsA("BasePart") and not v:IsA("MeshPart") then
                 originalTextures[v] = {Material = v.Material, Color = v.Color}
@@ -175,7 +193,6 @@ local function toggleTexturesAndLighting(state)
             end
         end
         
-        -- Bagian B: Matikan Semua Efek di Lighting (Hujan, Pelangi, Blur, dll)
         for _, effect in ipairs(Lighting:GetChildren()) do
             if effect:IsA("PostEffect") or effect:IsA("Sky") or string.find(effect.Name, "Effect") or string.find(effect.Name, "SunRays") or effect.Name == "Charles" then
                 originalLightingEffects[effect] = {Parent = effect.Parent}
@@ -183,7 +200,6 @@ local function toggleTexturesAndLighting(state)
             end
         end
     else
-        -- Kembalikan Tekstur Map
         for obj, data in pairs(originalTextures) do
             if obj and typeof(obj) == "Instance" then
                 if obj:IsA("BasePart") then
@@ -195,7 +211,6 @@ local function toggleTexturesAndLighting(state)
         end
         table.clear(originalTextures)
         
-        -- Kembalikan Efek Lighting
         for effect, data in pairs(originalLightingEffects) do
             if effect and typeof(effect) == "Instance" then
                 effect.Parent = data.Parent
@@ -205,8 +220,102 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
+-- // 6. LOGIKA FRUIT PRICE OVERLAY // --
+local function formatPrice(amount)
+    if amount >= 1000000 then
+        return string.format("%.2fM¢", amount / 1000000)
+    elseif amount >= 1000 then
+        return string.format("%.2fK¢", amount / 1000)
+    else
+        return string.format("%.0f¢", amount)
+    end
+end
 
--- // 6. PEMBUATAN PREMIUM GUI // --
+local function getEstimatedPrice(cropName, weightText)
+    local data = CROP_DATA[cropName]
+    if not data then return nil end
+
+    local weight = tonumber(string.match(weightText, "[%d%.]+"))
+    if not weight then return nil end
+
+    local pricePerKg = data.BaseSell / data.BaseWeight
+    local totalPrice = weight * pricePerKg
+
+    return formatPrice(totalPrice)
+end
+
+local function processInventorySlots()
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+
+    -- Scan semua objek Gui yang berpotensi menjadi slot inventory
+    for _, slot in ipairs(playerGui:GetDescendants()) do
+        if slot:IsA("GuiObject") and slot:FindFirstChildOfClass("TextLabel") then
+            local textLabels = {}
+            for _, child in ipairs(slot:GetChildren()) do
+                if child:IsA("TextLabel") and child.Name ~= "PriceTagOverlay" then
+                    table.insert(textLabels, child)
+                end
+            end
+
+            -- Slot item biasanya berisi setidaknya 2 TextLabel (Nama & Berat)
+            if #textLabels >= 2 then
+                local cropName = textLabels[1].Text
+                local weightText = textLabels[2].Text
+                
+                local priceString = getEstimatedPrice(cropName, weightText)
+                
+                if priceString and fruitPriceEnabled then
+                    local priceTag = slot:FindFirstChild("PriceTagOverlay")
+                    if not priceTag then
+                        priceTag = Instance.new("TextLabel")
+                        priceTag.Name = "PriceTagOverlay"
+                        priceTag.Size = UDim2.new(1, 0, 0, 14)
+                        priceTag.Position = UDim2.new(0, 0, 0, -12)
+                        priceTag.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                        priceTag.BackgroundTransparency = 0.2
+                        priceTag.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
+                        priceTag.Font = Enum.Font.SourceSansBold
+                        priceTag.TextSize = 11
+                        priceTag.ZIndex = 10
+                        priceTag.Parent = slot
+                        
+                        local corner = Instance.new("UICorner")
+                        corner.CornerRadius = UDim.new(0, 3)
+                        corner.Parent = priceTag
+                    end
+                    priceTag.Text = "≈ " .. priceString
+                    priceTag.Visible = true
+                end
+            end
+        end
+    end
+end
+
+local function hideAllPriceOverlays()
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+
+    for _, priceTag in ipairs(playerGui:GetDescendants()) do
+        if priceTag.Name == "PriceTagOverlay" then
+            priceTag.Visible = false
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        if fruitPriceEnabled then
+            processInventorySlots()
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+
+-- // 7. PEMBUATAN PREMIUM GUI // --
 local oldGui = CoreGui:FindFirstChild("PremiumControlGUI")
 if oldGui then oldGui:Destroy() end
 
@@ -217,8 +326,8 @@ ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 180, 0, 285) -- Ukuran disesuaikan jadi 285 agar muat 5 tombol
-MainFrame.Position = UDim2.new(0, 20, 0.5, -142)
+MainFrame.Size = UDim2.new(0, 180, 0, 325) -- Diperbesar ke 325 agar muat 6 tombol
+MainFrame.Position = UDim2.new(0, 20, 0.5, -162)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -354,6 +463,15 @@ createToggleButton("ClearTexturesBtn", "Clear Map Textures", 5, function(status)
     toggleTexturesAndLighting(status)
 end)
 
+createToggleButton("FruitPriceBtn", "Fruit Price Overlay", 6, function(status)
+    fruitPriceEnabled = status
+    if status then
+        processInventorySlots()
+    else
+        hideAllPriceOverlays()
+    end
+end)
+
 -- // RUNNING CONTROLLER // --
 local lastIteration = os.clock()
 local frameHistory = {}
@@ -377,11 +495,11 @@ MinimizeBtn.MouseButton1Click:Connect(function()
         MainFrame:TweenSize(UDim2.new(0, 180, 0, 30), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true)
         MinimizeBtn.Text = "+"
     else
-        MainFrame:TweenSize(UDim2.new(0, 180, 0, 285), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true, function()
+        MainFrame:TweenSize(UDim2.new(0, 180, 0, 325), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.2, true, function()
             Container.Visible = true
         end)
         MinimizeBtn.Text = "-"
     end
 end)
 
-print("Premium Suite Final V4 (Auto Drop Added): Loaded Successfully.")
+print("Premium Suite Final V5 (Fruit Price Overlay Added): Loaded Successfully.")
