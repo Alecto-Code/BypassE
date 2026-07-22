@@ -283,7 +283,7 @@ local function processInventorySlots()
 
     local grandTotalValue = 0
 
-    -- SCAN HANYA SLOT DENGAN TEKS "kg" DI DALAM INVENTORY
+    -- SCAN SLOT DI DALAM INVENTORY & HOTBAR
     for _, guiObj in ipairs(inventoryContainer:GetDescendants()) do
         if guiObj:IsA("TextLabel") and guiObj.Name ~= "PriceTagOverlay" and guiObj.Name ~= "TotalValueBanner" then
             local textLower = string.lower(guiObj.Text)
@@ -300,7 +300,7 @@ local function processInventorySlots()
                     
                     if baseSell and weight then
                         local totalPrice = weight * baseSell
-                        grandTotalValue = grandTotalValue + totalPrice -- Tambahkan ke Total Keseluruhan
+                        grandTotalValue = grandTotalValue + totalPrice -- Tambahkan ke Total
                         
                         local priceString = formatPrice(totalPrice)
                         
@@ -331,24 +331,24 @@ local function processInventorySlots()
         end
     end
 
-    -- // DIPASANG BANNER TOTAL HARGA BUAH DI ATAS INVENTORY // --
+    -- // BANNER TOTAL HARGA BUAH (DITAMPIKAN DI DALAM FRAME TOP HEADER Y = 6px) // --
     local totalBanner = inventoryContainer:FindFirstChild("TotalValueBanner")
     if not totalBanner then
         totalBanner = Instance.new("TextLabel")
         totalBanner.Name = "TotalValueBanner"
-        totalBanner.Size = UDim2.new(0, 240, 0, 26)
-        totalBanner.Position = UDim2.new(0.5, 0, 0, -30) -- Posisi di atas frame Inventory
+        totalBanner.Size = UDim2.new(0, 210, 0, 22)
+        totalBanner.Position = UDim2.new(0.5, 0, 0, 6) -- Di tengah atas di dalam frame Inventory
         totalBanner.AnchorPoint = Vector2.new(0.5, 0)
-        totalBanner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-        totalBanner.BackgroundTransparency = 0.15
+        totalBanner.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+        totalBanner.BackgroundTransparency = 0.2
         totalBanner.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
         totalBanner.Font = Enum.Font.SourceSansBold
-        totalBanner.TextSize = 13
-        totalBanner.ZIndex = 500
+        totalBanner.TextSize = 12
+        totalBanner.ZIndex = 1000 -- Memastikan selalu di paling depan
         totalBanner.Parent = inventoryContainer
         
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
+        corner.CornerRadius = UDim.new(0, 5)
         corner.Parent = totalBanner
 
         local stroke = Instance.new("UIStroke")
@@ -357,7 +357,7 @@ local function processInventorySlots()
         stroke.Parent = totalBanner
     end
     
-    totalBanner.Text = "TOTAL CROPS VALUE: ≈ " .. formatPrice(grandTotalValue)
+    totalBanner.Text = "TOTAL CROPS: ≈ " .. formatPrice(grandTotalValue)
     totalBanner.Visible = true
 end
 
@@ -571,4 +571,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V12 (Total Crops Value Banner Included): Loaded Successfully.")
+print("Premium Suite Final V13 (Internal Header Banner): Loaded Successfully.")
