@@ -248,44 +248,56 @@ local function processInventorySlots()
     local playerGui = localPlayer:FindFirstChild("PlayerGui")
     if not playerGui then return end
 
-    -- Scan semua objek Gui yang berpotensi menjadi slot inventory
-    for _, slot in ipairs(playerGui:GetDescendants()) do
-        if slot:IsA("GuiObject") and slot:FindFirstChildOfClass("TextLabel") then
-            local textLabels = {}
-            for _, child in ipairs(slot:GetChildren()) do
-                if child:IsA("TextLabel") and child.Name ~= "PriceTagOverlay" then
-                    table.insert(textLabels, child)
-                end
+    for _, guiObj in ipairs(playerGui:GetDescendants()) do
+        if guiObj:IsA("TextLabel") and string.find(string.lower(guiObj.Text), "kg") then
+            local weightLabel = guiObj
+            local weightText = weightLabel.Text
+            
+            local slot = weightLabel.Parent
+            if slot and not slot:IsA("GuiObject") then
+                slot = slot.Parent
             end
-
-            -- Slot item biasanya berisi setidaknya 2 TextLabel (Nama & Berat)
-            if #textLabels >= 2 then
-                local cropName = textLabels[1].Text
-                local weightText = textLabels[2].Text
-                
-                local priceString = getEstimatedPrice(cropName, weightText)
-                
-                if priceString and fruitPriceEnabled then
-                    local priceTag = slot:FindFirstChild("PriceTagOverlay")
-                    if not priceTag then
-                        priceTag = Instance.new("TextLabel")
-                        priceTag.Name = "PriceTagOverlay"
-                        priceTag.Size = UDim2.new(1, 0, 0, 14)
-                        priceTag.Position = UDim2.new(0, 0, 0, -12)
-                        priceTag.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-                        priceTag.BackgroundTransparency = 0.2
-                        priceTag.TextColor3 = Color3.fromRGB(255, 215, 0) -- Warna Emas
-                        priceTag.Font = Enum.Font.SourceSansBold
-                        priceTag.TextSize = 11
-                        priceTag.ZIndex = 10
-                        priceTag.Parent = slot
-                        
-                        local corner = Instance.new("UICorner")
-                        corner.CornerRadius = UDim.new(0, 3)
-                        corner.Parent = priceTag
+            
+            if slot and slot:IsA("GuiObject") then
+                local cropName = nil
+                for _, descendant in ipairs(slot:GetDescendants()) do
+                    if descendant:IsA("TextLabel") and descendant ~= weightLabel and descendant.Name ~= "PriceTagOverlay" then
+                        local text = descendant.Text
+                        for knownCrop, _ in pairs(CROP_DATA) do
+                            if string.find(string.lower(text), string.lower(knownCrop)) then
+                                cropName = knownCrop
+                                break
+                            end
+                        end
                     end
-                    priceTag.Text = "≈ " .. priceString
-                    priceTag.Visible = true
+                    if cropName then break end
+                end
+
+                if cropName then
+                    local priceString = getEstimatedPrice(cropName, weightText)
+                    
+                    if priceString and fruitPriceEnabled then
+                        local priceTag = slot:FindFirstChild("PriceTagOverlay")
+                        if not priceTag then
+                            priceTag = Instance.new("TextLabel")
+                            priceTag.Name = "PriceTagOverlay"
+                            priceTag.Size = UDim2.new(1, 0, 0, 16)
+                            priceTag.Position = UDim2.new(0, 0, 0, 0)
+                            priceTag.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                            priceTag.BackgroundTransparency = 0.3
+                            priceTag.TextColor3 = Color3.fromRGB(255, 215, 0)
+                            priceTag.Font = Enum.Font.SourceSansBold
+                            priceTag.TextSize = 11
+                            priceTag.ZIndex = 100
+                            priceTag.Parent = slot
+                            
+                            local corner = Instance.new("UICorner")
+                            corner.CornerRadius = UDim.new(0, 3)
+                            corner.Parent = priceTag
+                        end
+                        priceTag.Text = "≈ " .. priceString
+                        priceTag.Visible = true
+                    end
                 end
             end
         end
@@ -326,7 +338,7 @@ ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 180, 0, 325) -- Diperbesar ke 325 agar muat 6 tombol
+MainFrame.Size = UDim2.new(0, 180, 0, 325)
 MainFrame.Position = UDim2.new(0, 20, 0.5, -162)
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
@@ -502,4 +514,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V5 (Fruit Price Overlay Added): Loaded Successfully.")
+print("Premium Suite Final V6 (Robust Overlay Scanner): Loaded Successfully.")
