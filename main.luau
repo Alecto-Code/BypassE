@@ -63,39 +63,71 @@ local MUTATION_DATA = {
     ["Chained"]    = 8,
 }
 
--- // DETEKSI MULTIPLIER BERDASARKAN WARNA TEKS (FALLBACK) // --
+-- // INSPEKTOR WARNA CANGGIH (UIGRADIENT, RICHTEXT, TEXTCOLOR3) // --
+local function getTargetColor(nameLabel)
+    if not nameLabel then return Color3.new(1, 1, 1) end
+    
+    -- 1. Cek UIGradient di dalam TextLabel
+    local uiGradient = nameLabel:FindFirstChildOfClass("UIGradient")
+    if uiGradient and uiGradient.Color and #uiGradient.Color.Keypoints > 0 then
+        return uiGradient.Color.Keypoints[1].Value
+    end
+    
+    -- 2. Cek RichText warna di dalam string (misal <font color="#00ffff">)
+    local hexColor = string.match(nameLabel.Text, 'color=["\']#?(%x+)["\']')
+    if hexColor and #hexColor == 6 then
+        local r = tonumber(string.sub(hexColor, 1, 2), 16) / 255
+        local g = tonumber(string.sub(hexColor, 3, 4), 16) / 255
+        local b = tonumber(string.sub(hexColor, 5, 6), 16) / 255
+        return Color3.new(r, g, b)
+    end
+    
+    -- 3. Fallback ke TextColor3 biasa
+    return nameLabel.TextColor3
+end
+
 local function getMutationMultiplierFromColor(color)
+    local r, g, b = color.R, color.G, color.B
     local h, s, v = color:ToHSV()
     
-    -- Jika Saturation sangat rendah -> Putih / Normal (1x)
-    if s < 0.15 then
+    -- Jika warna Putih Netral (R, G, B semuanya tinggi & seimbang) -> Normal (1x)
+    if r > 0.82 and g > 0.82 and b > 0.82 and s < 0.18 then
         return 1.0
     end
     
-    -- Cyan / Biru Muda (~180 deg -> H = 0.45 - 0.55) -> Frozen (x20)
-    if h >= 0.45 and h <= 0.55 then
+    -- CYAN / BIRU MUDA (Frozen = 20x)
+    if (b > 0.55 and g > 0.45 and r < g) or (h >= 0.40 and h <= 0.60 and s > 0.2) then
         return 20.0
-    -- Ungu / Violet (~260-280 deg -> H = 0.70 - 0.80) -> Aurora (x40)
-    elseif h >= 0.70 and h <= 0.80 then
+    end
+    
+    -- UNGU / PURPLE (Aurora = 40x)
+    if (r > 0.3 and b > 0.5 and g < r and g < b) or (h >= 0.65 and h <= 0.82 and s > 0.2) then
         return 40.0
-    -- Pink / Magenta (~300-330 deg -> H = 0.82 - 0.93) -> Rainbow (x30)
-    elseif h >= 0.82 and h <= 0.93 then
+    end
+    
+    -- PINK / MAGENTA (Rainbow = 30x / Starstruck = 50x)
+    if (r > 0.7 and b > 0.6 and g < 0.5) or (h >= 0.83 and h <= 0.94 and s > 0.2) then
         return 30.0
-    -- Kuning / Emas (~45-60 deg -> H = 0.11 - 0.19) -> Gold (x10)
-    elseif h >= 0.11 and h <= 0.19 then
+    end
+
+    -- KUNING / EMAS (Gold = 10x / Electric = 25x / Glow = 100x)
+    if (r > 0.7 and g > 0.6 and b < 0.4) or (h >= 0.10 and h <= 0.20 and s > 0.2) then
         return 10.0
-    -- Oranye (~20-40 deg -> H = 0.05 - 0.10) -> Ignited (x60)
-    elseif h >= 0.05 and h <= 0.10 then
+    end
+
+    -- ORANYE (Ignited = 60x)
+    if (r > 0.8 and g > 0.3 and g < 0.65 and b < 0.3) or (h >= 0.04 and h <= 0.09 and s > 0.2) then
         return 60.0
-    -- Merah (H < 0.04 atau H > 0.95) -> Bloodlit (x70)
-    elseif h < 0.04 or h > 0.95 then
+    end
+
+    -- MERAH (Bloodlit = 70x)
+    if (r > 0.7 and g < 0.3 and b < 0.3) or ((h < 0.04 or h > 0.95) and s > 0.2) then
         return 70.0
     end
     
     return 1.0
 end
 
--- AMBIL MULTIPLIER DARI ATTRIBUTE ATAU WARNA
 local function getMutationMultiplier(slot, nameLabel)
     if slot then
         for attrName, attrVal in pairs(slot:GetAttributes()) do
@@ -113,7 +145,8 @@ local function getMutationMultiplier(slot, nameLabel)
     end
     
     if nameLabel and nameLabel:IsA("TextLabel") then
-        return getMutationMultiplierFromColor(nameLabel.TextColor3)
+        local targetColor = getTargetColor(nameLabel)
+        return getMutationMultiplierFromColor(targetColor)
     end
     
     return 1.0
@@ -288,7 +321,7 @@ local function toggleTexturesAndLighting(state)
     end
 end
 
--- // 6. LOGIKA FRUIT PRICE OVERLAY + MUTATION MULTIPLIER // --
+-- // 6. LOGIKA FRUIT PRICE OVERLAY // --
 local function formatPrice(amount)
     if amount >= 1000000 then
         return string.format("%.2fM¢", amount / 1000000)
@@ -306,8 +339,10 @@ local function getCropDataForSlot(weightLabel)
         if frame and frame:IsA("GuiObject") then
             for _, child in ipairs(frame:GetDescendants()) do
                 if child:IsA("TextLabel") and child ~= weightLabel and child.Name ~= "PriceTagOverlay" then
-                    local textClean = string.match(child.Text, "^%s*(.-)%s*$") or child.Text
-                    local textLower = string.lower(textClean)
+                    -- Hapus tag HTML/Font jika ada (RichText)
+                    local cleanText = string.gsub(child.Text, "<.->", "")
+                    cleanText = string.match(cleanText, "^%s*(.-)%s*$") or cleanText
+                    local textLower = string.lower(cleanText)
                     
                     if string.find(textLower, "seed") or string.find(textLower, "benih") then
                         return nil, nil, 1.0
@@ -369,7 +404,6 @@ local function processInventorySlots()
                     local weight = tonumber(string.match(weightText, "[%d%.]+"))
                     
                     if baseSell and weight then
-                        -- RUMUS: Berat x BaseSell x Multiplier Mutasi
                         local totalPrice = weight * baseSell * mutationMultiplier
                         grandTotalValue = grandTotalValue + totalPrice
                         
@@ -402,7 +436,6 @@ local function processInventorySlots()
         end
     end
 
-    -- BANNER TOTAL HARGA BUAH (DENGAN KALKULASI MUTASI)
     local totalBanner = inventoryContainer:FindFirstChild("TotalValueBanner")
     if not totalBanner then
         totalBanner = Instance.new("TextLabel")
@@ -642,4 +675,4 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-print("Premium Suite Final V14 (Full Mutation Multipliers Integrated): Loaded Successfully.")
+print("Premium Suite Final V15 (UIGradient & RichText Inspector): Loaded Successfully.")
